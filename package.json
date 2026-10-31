@@ -1,0 +1,8 @@
+{
+  "name": "shifra",
+  "version": "1.0.0",
+  "description": "Shifra - Arabic Codenames, open web version",
+  "private": true,
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
