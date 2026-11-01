@@ -329,6 +329,8 @@ h1,h2,h3,p{margin:0}
 #micBtn[aria-pressed="true"]{background:#1f9d55;border-color:#1f9d55;color:#fff}
 #muteBtn[aria-pressed="true"]{background:#c0392b;border-color:#c0392b;color:#fff;animation:blink 1.6s ease infinite}
 .vinfo{color:var(--muted);font-size:12.5px}
+.vdbg{flex-basis:100%;color:var(--muted);font-size:11px;direction:ltr;text-align:left;opacity:.8}
+.vdbg:empty{display:none}
 .cc .mi{display:inline-grid;place-items:center;width:15px;height:15px;color:#3fd37a;flex:none}
 .cc .mi.off{color:#ff6b5e}
 .cc .mi svg{width:15px;height:15px}
@@ -1473,9 +1475,13 @@ async function routeHash(){
 const MICSVG='<svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
 const MICOFF=MICSVG.replace('</svg>','<path d="M3 3l18 18"/></svg>');
 const VC={on:false,muted:false,stream:null,peers:new Map(),fails:{},talk:{},meters:{},ctx:null,iv:null};
-const ICE=[{urls:'stun:stun.l.google.com:19302'}];
+let ICE=[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},
+  {urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp','turns:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}];
+async function loadIce(){
+  try{const r=await fetch('/api/ice',{cache:'no-store'});if(r.ok){const j=await r.json();VC.oldServer=false;if(Array.isArray(j)&&j.length)ICE=j}else VC.oldServer=true}catch(e){}
+}
 const voiceOK=()=>!!(window.RTCPeerConnection&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
-function sigPut(id,obj){if(R)enq('p'+uid,()=>R.col.doc(uid).update({sg:{[id]:obj}})).catch(()=>{})}
+function sigPut(id,obj){if(R)enq('p'+uid,()=>R.col.doc(uid).update({sg:{[id]:obj}})).then(()=>{VC.sent=(VC.sent||0)+1;paintVoice()},e=>{VC.err=(e&&e.code)||'خطأ';toast('تعذّر إرسال إشارة الصوت ('+VC.err+'). تأكدوا أنكم رفعتم server.js الجديد');paintVoice()})}
 function gathered(pc){
   return new Promise(res=>{
     if(pc.iceGatheringState==='complete')return res();
@@ -1506,13 +1512,16 @@ function newPC(id){
   pc.ontrack=ev=>{
     const old=document.getElementById('va-'+id);if(old)old.remove();
     const a=document.createElement('audio');a.id='va-'+id;a.autoplay=true;a.playsInline=true;a.srcObject=ev.streams[0];a.style.display='none';
-    document.body.appendChild(a);a.play().catch(()=>{});meter(id,ev.streams[0]);
+    document.body.appendChild(a);a.play().catch(()=>{VC.blocked=true;paintVoice()});meter(id,ev.streams[0]);
   };
+  pc.oniceconnectionstatechange=()=>paintVoice();
+  pc.onicegatheringstatechange=()=>paintVoice();
   let t=null;
   pc.onconnectionstatechange=()=>{
     const st=pc.connectionState;
     clearTimeout(t);
-    if(st==='connected'){VC.fails[id]=0;paintVoice()}
+    paintVoice();
+    if(st==='connected'){VC.fails[id]=0}
     else if(st==='failed'||st==='closed'||st==='disconnected'){
       t=setTimeout(()=>{const e=VC.peers.get(id);if(e&&e.pc===pc){VC.fails[id]=(VC.fails[id]||0)+1;closePeer(id);if(VC.fails[id]<4)setTimeout(voiceSync,1500)}},st==='disconnected'?6000:300);
     }
@@ -1573,7 +1582,8 @@ async function voiceJoin(){
   if(n>=6){toast('الدردشة الصوتية ممتلئة (٦ أشخاص)');return}
   try{VC.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})}
   catch(e){toast('ما قدرنا نفتح المايك. اسمحوا للموقع باستخدام المايك من إعدادات المتصفح');return}
-  VC.on=true;VC.muted=false;VC.fails={};
+  await loadIce();
+  VC.on=true;VC.muted=false;VC.fails={};VC.blocked=false;VC.t0=Date.now();
   meter(uid,VC.stream);
   voiceDoc({voice:true,mute:false});
   sfx.good();paintVoice();
@@ -1608,7 +1618,20 @@ function paintVoice(){
   $('#muteTxt').textContent=VC.muted?'المايك مكتوم. اضغط للتحدث':'كتم المايك';
   const conn=Array.from(VC.peers.values()).filter(e=>e.pc.connectionState==='connected').length;
   const total=R?Object.values(R.players).filter(p=>p.voice).length:0;
-  $('#voiceInfo').textContent=VC.on?(total>1?'متصل بـ '+ar(conn)+' من '+ar(total-1):'ننتظر انضمام أحد للصوت'):(total?ar(total)+' في الدردشة الصوتية':'');
+  let info=VC.on?(total>1?'متصل بـ '+ar(conn)+' من '+ar(total-1):'ننتظر انضمام أحد للصوت'):(total?ar(total)+' في الدردشة الصوتية':'');
+  const bad=Array.from(VC.peers.values()).some(e=>e.pc.connectionState==='failed'||e.pc.iceConnectionState==='failed');
+  if(VC.on&&bad)info='تعذّر الاتصال المباشر. جرّبوا نفس شبكة الواي فاي';
+  if(VC.on&&VC.oldServer&&window.__LAN)info='السيرفر قديم: ارفعوا server.js الجديد في GitHub';
+  $('#voiceInfo').textContent=info;
+  let dbg=$('#voiceDbg');
+  if(!dbg){dbg=el('div','vdbg');dbg.id='voiceDbg';bar.appendChild(dbg)}
+  dbg.textContent=VC.on?Array.from(VC.peers.entries()).map(e=>(dispName(e[0]))+': '+e[1].pc.connectionState+'/'+e[1].pc.iceConnectionState+'/'+e[1].pc.iceGatheringState).join(' | ')+' · إشارات '+(VC.sent||0)+(VC.err?' · خطأ '+VC.err:''):'';
+  let ub=$('#unlockBtn');
+  if(VC.on&&VC.blocked){
+    if(!ub){ub=el('button','btn small primary','اضغط لتشغيل الصوت');ub.id='unlockBtn';ub.type='button';
+      ub.addEventListener('click',()=>{VC.blocked=false;$$('audio[id^=va-]').forEach(a=>a.play().catch(()=>{VC.blocked=true}));if(VC.ctx&&VC.ctx.state==='suspended')VC.ctx.resume();paintVoice()});
+      bar.appendChild(ub)}
+  }else if(ub)ub.remove();
 }
 
 /* ---------- ربط الأحداث ---------- */

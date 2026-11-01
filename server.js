@@ -100,6 +100,12 @@ const server = http.createServer(async (req, res) => {
       return res.end(html);
     }
     if (u.pathname === '/favicon.ico') { res.writeHead(204); return res.end(); }
+    if (u.pathname === '/api/ice') {
+      // optional: set ICE_JSON on the host to your own STUN/TURN list (JSON array)
+      let list = null;
+      try { if (process.env.ICE_JSON) list = JSON.parse(process.env.ICE_JSON); } catch (e) { /* ignore */ }
+      return sendJson(res, 200, Array.isArray(list) ? list : []);
+    }
     if (u.pathname === '/api/time') return sendJson(res, 200, { t: Date.now() });
     if (u.pathname === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }
 
