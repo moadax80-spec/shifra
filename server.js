@@ -39,7 +39,7 @@ const MAX_DOCS = 4000;
 const MAX_ROOMS = 300;
 const MAX_PLAYERS_PER_ROOM = 40;
 const MAX_WATCHERS = 800;
-const MAX_DOC_CHARS = 8192;
+const MAX_DOC_CHARS = 24576;
 const parentOf = (p) => p.slice(0, p.lastIndexOf('/'));
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 
