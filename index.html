@@ -894,7 +894,7 @@ body.danger .alarmfx{animation:alarmP 1s ease-in-out infinite}
 /* الدردشة */
 .txt{font-size:17px}
 .drawer{max-height:min(66dvh,calc(var(--vvh,100dvh) - 20px),600px)}
-@media (max-width:899px){.drawer{bottom:var(--kb,0px);transition:bottom .12s}}
+@media (max-width:959px){.drawer{bottom:var(--kb,0px);transition:bottom .12s}}
 .drawer .chatform{display:flex;align-items:center;gap:8px}
 .drawer .chatform .txt{flex:1;min-width:0;height:46px;font-size:16px;border-radius:23px;padding:0 16px}
 .cbtn{width:46px;height:46px;border-radius:50%;border:0;display:grid;place-items:center;flex:none;background:var(--gold);color:var(--gold-ink);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;transition:transform .2s var(--spring),background .2s,box-shadow .2s}
@@ -913,6 +913,14 @@ body.danger .alarmfx{animation:alarmP 1s ease-in-out infinite}
 .vmw i{flex:1;min-width:2px;border-radius:2px;background:currentColor;opacity:.35;transition:opacity .15s}
 .vmw i.on{opacity:1}
 .vmt{font-size:11.5px;opacity:.85;font-variant-numeric:tabular-nums;min-width:30px}
+
+/* ===== p18: إعادة الترتيب + تلميعات ===== */
+.arrbox{display:grid;gap:8px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--felt-2)}
+.arrbox>small{color:var(--muted);font-size:13px}
+.arrbox .btn{flex:1;min-width:130px}
+.card{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.vcov{box-shadow:inset 0 0 0 5px var(--vt),0 3px 8px rgba(0,0,0,.4)}
+@media (min-width:960px){.drawer{bottom:20px!important}}
 </style>
 
 <main id="home" class="wrap">
@@ -1098,6 +1106,7 @@ body.danger .alarmfx{animation:alarmP 1s ease-in-out infinite}
     <p class="note">اختر فريقك ودورك. لكل فريق جاسوس واحد، والباقون مواطنون يخمّنون.</p>
     <div id="teamsBox" class="teams"></div>
     <div id="watchBox" class="watch"></div>
+    <div id="arrBox" class="arrbox"><b>إعادة ترتيب الفرق</b><small>بدّلوا الأدوار بين الجولات بضغطة واحدة، ويصل التغيير لكل اللاعبين.</small><div class="row"><button id="arrSpy" class="btn" type="button">🔄 تدوير الجاسوس</button><button id="arrSwap" class="btn" type="button">⇄ تبديل الفريقين</button><button id="arrShuf" class="btn" type="button">🎲 خلط عشوائي</button></div></div>
     <div class="row">
       <button id="specBtn" class="btn ghost" type="button">مشاهدة فقط</button>
       <button id="restartBtn" class="btn ghost" type="button" hidden>لعبة جديدة (للمضيف)</button>
@@ -1130,6 +1139,7 @@ body.danger .alarmfx{animation:alarmP 1s ease-in-out infinite}
     <div class="row">
       <button id="endAgain" class="btn primary" type="button">جولة جديدة</button>
       <button id="endView" class="btn" type="button">شاهدوا اللوحة</button>
+      <button id="endArr" class="btn" type="button" hidden>🔀 إعادة ترتيب الفرق</button>
       <button id="endLb" class="btn" type="button">🏆 الصدارة</button>
       <button id="endReplay" class="btn" type="button" hidden>🎬 أهم اللحظات</button>
       <button id="endTitles" class="btn" type="button">🏅 ألقابي</button>
@@ -1310,7 +1320,7 @@ const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
 const AR='٠١٢٣٤٥٦٧٨٩';
 const ar=n=>String(n).replace(/\d/g,d=>AR[+d]);
 const TEAM={red:'الأحمر',blue:'الأزرق'};
-const ROLE_AR={red:'للفريق الأحمر',blue:'للفريق الأزرق',neutral:'محايدة',kill:'القاتلة'};
+const ROLE_AR={get red(){return 'للفريق '+TEAM.red},get blue(){return 'للفريق '+TEAM.blue},neutral:'محايدة',kill:'القاتلة'};
 const opp=t=>t==='red'?'blue':'red';
 const now=()=>Date.now()+(window.__lanSkew||0);
 const ARTIFACT_URL='https://claude.ai/artifact/WPThH6Rz221Z3kCnpKupwe';
@@ -1416,7 +1426,7 @@ let R=null;                 // الغرفة الأونلاين
 let me={team:null,role:null};
 let DB=null,USER=null,uid=null,canWrite=true;
 const board=$('#board');
-const HOLD={};const HOLDN=()=>Object.keys(HOLD).length;
+let SUSP_ID=0;const HOLD={};const HOLDN=()=>Object.keys(HOLD).length;
 const left=t=>g.roles.reduce((n,r,i)=>n+(r===t&&(!g.revealed[i]||HOLD[i])?1:0),0);
 const save=()=>{if(g&&mode==='local')store.set('shifra-game',Object.assign({},g,{sels:[]}))};
 const Q={};
@@ -1720,10 +1730,12 @@ function goHome(){
   mode='local';g=null;
   ['#game','#end','#roles','#key'].forEach(s=>$(s).hidden=true);
   $('#home').hidden=false;
+  applyTeamNames({red:prefs.tnR,blue:prefs.tnB});
   refreshResume();scrollTo(0,0);
 }
 function spyView(){return g.showAll||(mode==='online'&&me.role==='spy'&&!prefs.mapHide)}
 function buildBoard(){
+  SUSP_ID++;Object.keys(HOLD).forEach(k=>delete HOLD[k]);board.classList.remove('suspense');
   board.innerHTML='';
   g.words.forEach((w,i)=>{
     const b=document.createElement('button');b.type='button';b.className='card';
@@ -1808,9 +1820,11 @@ function suspense(i,done,total){
   total=total||3600;
   const b=board.children[i];
   if(!b){done();return}
+  const my=SUSP_ID;
   HOLD[i]=1;board.classList.add('suspense');paint(i);toast('آخر كلمة… 😮');
   const t0=performance.now();let k=0;
   (function step(){
+    if(my!==SUSP_ID)return;
     const e=performance.now()-t0;
     if(e>=total){delete HOLD[i];board.classList.remove('suspense');b.dataset.sc='';done();return}
     b.dataset.sc=(k++%2)?'blue':'red';
@@ -1824,6 +1838,9 @@ function applyTeamNames(tn){
   TEAM.red=cleanTn(tn.red,'الأحمر');TEAM.blue=cleanTn(tn.blue,'الأزرق');
   const a=document.querySelector('#tRed .nm b'),b=document.querySelector('#tBlue .nm b');
   if(a)a.textContent='الفريق '+TEAM.red;if(b)b.textContent='الفريق '+TEAM.blue;
+  const q=(sel,t)=>{const n=document.querySelector(sel);if(n)n.textContent=t};
+  q('#intro .in-t.red b',TEAM.red);q('#intro .in-t.blue b',TEAM.blue);
+  [['.legend .lr',TEAM.red],['.legend .lb',TEAM.blue]].forEach(x=>{const n=document.querySelector(x[0]);if(n&&n.lastChild)n.lastChild.textContent=x[1]});
   const bs=document.querySelectorAll('#segStart button');if(bs[1])bs[1].textContent=TEAM.red;if(bs[2])bs[2].textContent=TEAM.blue;
 }
 function paintAll(){g.words.forEach((_,i)=>paint(i))}
@@ -2059,7 +2076,7 @@ function burst(i){
 }
 function shakeBoard(){board.classList.remove('bshake');void board.offsetWidth;board.classList.add('bshake');setTimeout(()=>board.classList.remove('bshake'),900)}
 function endTurn(){
-  if(g.over)return;
+  if(g.over||HOLDN())return;
   const prev=g.sels;g.sels=[];prev.forEach(k=>paint(k));
   g.turn=opp(g.turn);
   stopTimer();$('#endBtn').classList.remove('pulse');
@@ -2076,6 +2093,7 @@ function showEnd(noConf){
   $('#endCard').className='modal '+g.winner;
   $('#endTitle').textContent='فاز الفريق '+TEAM[g.winner];
   $('#endWhy').textContent=g.reason;
+  $('#endArr').hidden=mode!=='online';
   $('#end').hidden=false;$('#endAgain').focus();
   if(!noConf)confetti(g.winner);
 }
@@ -2237,6 +2255,7 @@ function onGameSnap(snap){
 }
 function applyRemote(d){
   const first=!R.first;R.first=true;applyTeamNames(d.tn);
+  if(first)R.arrSeen=d.arr?d.arr.t:0;else applyArr(d);
   const rr=makeRoles(d.seed),roles=rr.roles,rev=d.rev||{};
   const revealed=roles.map((_,i)=>!!rev[i]);
   const newRound=first||d.seed!==R.seed||d.round!==R.round;
@@ -2304,6 +2323,42 @@ function onPlayersSnap(snap){
 }
 function maybeAsk(){
   if(R&&R.first&&R.pfirst&&!R.asked&&!me.role&&canWrite){R.asked=true;openRoles()}
+}
+function arrCompute(kind){
+  const ents=Object.entries(R.players).filter(e=>e[1].role&&e[1].team).sort((a,b)=>a[0]<b[0]?-1:1);
+  const m={};
+  if(kind==='swap'){ents.forEach(e=>{m[e[0]]={t:opp(e[1].team),r:e[1].role}})}
+  else if(kind==='spy'){
+    ['red','blue'].forEach(t=>{
+      const mem=ents.filter(e=>e[1].team===t);if(!mem.length)return;
+      const si=mem.findIndex(e=>e[1].role==='spy'),ni=si<0?0:(si+1)%mem.length;
+      mem.forEach((e,k)=>{m[e[0]]={t,r:k===ni?'spy':'op'}});
+    });
+  }else{
+    const a=ents.map(e=>e[0]);
+    for(let k=a.length-1;k>0;k--){const j=Math.floor(Math.random()*(k+1));[a[k],a[j]]=[a[j],a[k]]}
+    const half=Math.ceil(a.length/2),A=Math.random()<.5?'red':'blue',B=opp(A);
+    a.slice(0,half).forEach((id,k)=>{m[id]={t:A,r:k?'op':'spy'}});
+    a.slice(half).forEach((id,k)=>{m[id]={t:B,r:k?'op':'spy'}});
+  }
+  return m;
+}
+function arrange(kind){
+  if(!R||denyWrite())return;
+  if(!me.role){toast('اختر فريقك ودورك أولاً ثم أعد الترتيب');return}
+  const m=arrCompute(kind);
+  if(!Object.keys(m).length){toast('لا يوجد لاعبون لإعادة ترتيبهم');return}
+  enq('game',()=>R.ref.update({arr:{t:Date.now(),by:dispName(uid),k:kind,m}})).catch(handleWriteError);
+  sfx.pick();
+}
+const ARR_TXT={spy:'دوّر الجاسوس',swap:'بدّل الفريقين',shuf:'خلط الفرق عشوائياً'};
+function applyArr(d){
+  if(!d.arr||d.arr.t===R.arrSeen)return;
+  R.arrSeen=d.arr.t;
+  const a=d.arr.m&&d.arr.m[uid];
+  if(a&&(a.t==='red'||a.t==='blue')&&(a.r==='spy'||a.r==='op')&&canWrite&&(a.t!==me.team||a.r!==me.role))setMe(a.t,a.r);
+  toast(String(d.arr.by||'لاعب').slice(0,20)+' '+(ARR_TXT[d.arr.k]||'أعاد الترتيب')+(a?'. أنت الآن '+(a.r==='spy'?'جاسوس':'مواطن')+' في الفريق '+TEAM[a.t]:''));
+  sfx.clue();
 }
 function pick(team,role){
   if(denyWrite())return;
@@ -2398,7 +2453,7 @@ function startRound(){
   enq('game',()=>R.ref.set(doc)).catch(handleWriteError);
 }
 function doRevealMany(){
-  if(!g||g.over)return;
+  if(!g||g.over||HOLDN())return;
   const why=denyReason();if(why){toast(why);return}
   const list=g.sels.filter(k=>!g.revealed[k]);
   if(!list.length)return;
@@ -2426,13 +2481,14 @@ function doRevealMany(){
   if(list.slice(0,n).some(i=>g.roles[i]!==team))bumpStat('w');
 }
 function revealManyLocal(){
+  if(HOLDN())return;
   const list=g.sels.slice(),t=g.turn;let okN=0;
   for(const i of list){if(g.over||g.turn!==t||HOLDN())break;if(g.roles[i]===t)okN++;reveal(i)}
   g.sels=[];paintAll();updateDock();save();
   if(!g.over&&!HOLDN())setTimeout(()=>showTaunt(okN,t),700);
 }
 function doEndTurn(){
-  if(!g||g.over)return;
+  if(!g||g.over||HOLDN())return;
   const why=denyReason(true);if(why){toast(why);return}
   g.sels=[];pushSel([]);paintAll();
   enq('game',()=>R.ref.update({turn:opp(g.turn),clue:null,cg:0,timerEnd:0,ev:evPush({k:'e',p:dispName(uid),team:g.turn})})).catch(handleWriteError);
@@ -3135,6 +3191,7 @@ $('#soundBtn').addEventListener('click',openOpts);
 {const hs=$('#homeSet');if(hs)hs.addEventListener('click',()=>{sfx.click();openOpts()})}
 $('#homeBtn').addEventListener('click',goHome);
 $('#againBtn').addEventListener('click',()=>{$('#end').hidden=true;mode==='online'?startRound():startNew()});
+$('#endArr').addEventListener('click',()=>{$('#end').hidden=true;openRoles()});
 $('#endAgain').addEventListener('click',()=>{$('#end').hidden=true;mode==='online'?startRound():startNew()});
 $('#endView').addEventListener('click',viewAll);
 $('#resultBtn').addEventListener('click',showEnd);
@@ -3148,6 +3205,9 @@ $('#inviteBtn').addEventListener('click',()=>{if(R)copyText(inviteText(),'نسخ
 $('#specBtn').addEventListener('click',()=>{if(denyWrite())return;setMe(null,null);closeRoles();toast('أنت الآن مشاهد')});
 $('#leaveBtn').addEventListener('click',leaveForever);
 let rsT=0;
+$('#arrSpy').addEventListener('click',()=>arrange('spy'));
+$('#arrSwap').addEventListener('click',()=>arrange('swap'));
+$('#arrShuf').addEventListener('click',()=>arrange('shuf'));
 $('#restartBtn').addEventListener('click',e=>{
   const b=e.currentTarget;
   if(b.dataset.arm){clearTimeout(rsT);b.dataset.arm='';b.textContent='لعبة جديدة (للمضيف)';closeRoles();startRound();return}
